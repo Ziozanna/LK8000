@@ -20,6 +20,7 @@
 #include "Util/tstring.hpp"
 #include "Time/PeriodClock.hpp"
 #include "Parser.h"
+#include "Devices/GDL90/GDL90Protocol.h"
 
 #define DEVNAMESIZE 32
 #define	NUMDEV		 6U
@@ -145,6 +146,8 @@ struct DeviceDescriptor_t {
   double SoftwareVer;
 #endif
   NMEAParser nmeaParser;
+  GDL90Parser* gdl90Parser;
+  bool ParseGDL90(const uint8_t* buffer, size_t length);
   //  DeviceIO PortIO[NUMDEV];
 
   BOOL _PutMacCready(double McReady);

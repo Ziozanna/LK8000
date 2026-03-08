@@ -71,6 +71,7 @@ void DeviceDescriptor_t::Reset() {
 #endif
 
   nmeaParser.Reset();
+  gdl90Parser = nullptr;
 
   IgnoreMacCready.Reset();
   IgnoreBugs.Reset();
@@ -186,4 +187,11 @@ BOOL DeviceDescriptor_t::RecvBallast(double Ballast) {
     return TRUE;
   }
   return FALSE;
+}
+
+bool DeviceDescriptor_t::ParseGDL90(const uint8_t* buffer, size_t length) {
+  if (!gdl90Parser) {
+    gdl90Parser = new GDL90Parser();
+  }
+  return gdl90Parser->ParseMessage(buffer, length);
 }

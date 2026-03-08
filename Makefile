@@ -1088,6 +1088,7 @@ DEVS	:=\
 	$(DEV)/Fanet/Fanet.cpp \
 	$(DEV)/Fanet/frame.cpp \
 	$(DEV)/devBase.cpp \
+  $(DEV)/GDL90/GDL90Protocol.cpp \
 	$(DEV)/devBorgeltB50.cpp \
 	$(DEV)/devCAI302.cpp \
 	$(DEV)/devCaiGpsNav.cpp \
