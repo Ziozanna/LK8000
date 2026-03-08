@@ -13,6 +13,10 @@
 #include <cstdint>
 #include <cstddef>
 
+// GDL90 Message IDs
+#define GDL90_ID_TRAFFIC_REPORT 0x14
+#define GDL90_ID_OWNSHIP_REPORT 0x0A
+
 class GDL90Parser {
 public:
   GDL90Parser();
@@ -21,6 +25,7 @@ public:
   bool ParseMessage(const uint8_t* buffer, size_t length);
 
 private:
+  bool ParseTrafficReport(const uint8_t* buffer, size_t length);
   // Parser state variables
 };
 

@@ -71,7 +71,11 @@ void DeviceDescriptor_t::Reset() {
 #endif
 
   nmeaParser.Reset();
-  gdl90Parser = nullptr;
+
+  if (gdl90Parser) {
+    delete gdl90Parser;
+    gdl90Parser = nullptr;
+  }
 
   IgnoreMacCready.Reset();
   IgnoreBugs.Reset();
