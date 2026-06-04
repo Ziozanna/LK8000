@@ -34,9 +34,29 @@ static void CheckDirectToOffTaskArrival(NMEA_INFO* Basic) {
   }
 
   if (dist < radius) {
-    // Arrived: transition origin to the fix, resume leg to task point
-    DirectToOriginLat = WayPointList[DirectToWaypointIndex].Latitude;
-    DirectToOriginLon = WayPointList[DirectToWaypointIndex].Longitude;
+    const double fix_lat = WayPointList[DirectToWaypointIndex].Latitude;
+    const double fix_lon = WayPointList[DirectToWaypointIndex].Longitude;
+
+    // Origin for autopilot XTE: the fix just reached
+    DirectToOriginLat = fix_lat;
+    DirectToOriginLon = fix_lon;
+
+    // Resume to nearest remaining task point (measured from the fix position)
+    double min_dist = 1e20;
+    int nearest_tp = ActiveTaskPoint;
+    for (int i = ActiveTaskPoint; i < MAXTASKPOINTS; i++) {
+      if (!ValidTaskPointFast(i)) break;
+      double d = 0., b = 0.;
+      DistanceBearing(fix_lat, fix_lon,
+                      WayPointList[Task[i].Index].Latitude,
+                      WayPointList[Task[i].Index].Longitude,
+                      &d, &b);
+      if (d < min_dist) {
+        min_dist = d;
+        nearest_tp = i;
+      }
+    }
+    ActiveTaskPoint = nearest_tp;
     DirectToWaypointIndex = -1;
   }
 }
