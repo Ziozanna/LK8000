@@ -648,13 +648,21 @@ static CallBackTableEntry_t CountdownCallBackTable[] = {
   EndCallbackEntry()
 };
 
-static bool ShowDirectToCountdownDialog(int new_tp) {
+// Shared countdown popup.
+// new_tp >= 0: task point (advances ActiveTaskPoint, clears DirectToWaypointIndex)
+// new_tp == -1: off-task waypoint; wp_index = WayPointList index (GA only)
+static bool RunDirectToCountdown(int new_tp, int wp_index) {
   {
     const std::lock_guard lock(CritSec_TaskData);
-    if (!ValidTaskPoint(new_tp) || !ValidWayPointFast(Task[new_tp].Index)) {
-      return false;
+    if (new_tp >= 0) {
+      if (!ValidTaskPoint(new_tp) || !ValidWayPointFast(Task[new_tp].Index))
+        return false;
+      LK_tcsncpy(countdown_wp_name, WayPointList[Task[new_tp].Index].Name, NAME_SIZE - 1);
+    } else {
+      if (!ValidWayPointFast(wp_index))
+        return false;
+      LK_tcsncpy(countdown_wp_name, WayPointList[wp_index].Name, NAME_SIZE - 1);
     }
-    LK_tcsncpy(countdown_wp_name, WayPointList[Task[new_tp].Index].Name, NAME_SIZE - 1);
   }
 
   std::unique_ptr<WndForm> pf(dlgLoadFromXML(CountdownCallBackTable,
@@ -669,32 +677,42 @@ static bool ShowDirectToCountdownDialog(int new_tp) {
 
   const UINT centered = DT_CENTER | DT_VCENTER | DT_NOCLIP;
   WndFrame* frmLabel = pf->FindByName<WndFrame>(TEXT("frmLabel"));
-  if (frmLabel) {
-    frmLabel->SetCaption(TEXT("Direct to:"));
-    frmLabel->SetCaptionStyle(centered);
-  }
+  if (frmLabel) { frmLabel->SetCaption(TEXT("Direct to:")); frmLabel->SetCaptionStyle(centered); }
   WndFrame* frmWpName = pf->FindByName<WndFrame>(TEXT("frmWpName"));
   if (frmWpName) frmWpName->SetCaptionStyle(centered);
   WndFrame* frmCountdown = pf->FindByName<WndFrame>(TEXT("frmCountdown"));
   if (frmCountdown) frmCountdown->SetCaptionStyle(centered);
 
   UpdateCountdownFrames(pf.get());
-
   pf->SetTimerNotify(1000, OnDirectToCountdownTimer);
 
-  const int result = pf->ShowModal();
+  if (pf->ShowModal() != mrOK)
+    return false;
 
-  if (result == mrOK) {
-    const std::lock_guard lock(CritSec_TaskData);
-    if (ValidTaskPoint(new_tp)) {
-      ActiveTaskPoint = new_tp;
-      DirectToActive = true;
-      DirectToOriginLat = GPS_INFO.Latitude;
-      DirectToOriginLon = GPS_INFO.Longitude;
-    }
-    return true;
+  const std::lock_guard lock(CritSec_TaskData);
+  DirectToActive = true;
+  DirectToOriginLat = GPS_INFO.Latitude;
+  DirectToOriginLon = GPS_INFO.Longitude;
+  if (new_tp >= 0 && ValidTaskPoint(new_tp)) {
+    ActiveTaskPoint = new_tp;
+    DirectToWaypointIndex = -1;
+  } else if (ValidWayPointFast(wp_index)) {
+    DirectToWaypointIndex = wp_index;
+  } else {
+    DirectToActive = false;
+    return false;
   }
-  return false;
+  return true;
+}
+
+// Called from Target dialog (task waypoint Direct To)
+static bool ShowDirectToCountdownDialog(int new_tp) {
+  return RunDirectToCountdown(new_tp, -1);
+}
+
+// Called from dlgWayQuick (off-task waypoint Direct To in GA mode)
+bool ShowDirectToOffTaskDialog(int wp_index) {
+  return RunDirectToCountdown(-1, wp_index);
 }
 
 // --- Navigation buttons (Next / Prev / Direct To) ---
