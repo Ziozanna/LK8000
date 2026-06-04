@@ -716,9 +716,9 @@ static void UpdateNavButtons() {
     has_next = in_task && ValidTaskPoint(target_point + 1);
   }
 
-  if (btnPrev)   btnPrev->SetVisible(in_task && has_prev);
-  if (btnNext)   btnNext->SetVisible(in_task && has_next);
-  if (btnDirect) btnDirect->SetVisible(show_direct_button && in_task &&
+  if (btnPrev)   btnPrev->SetVisible(ISGAAIRCRAFT && in_task && has_prev);
+  if (btnNext)   btnNext->SetVisible(ISGAAIRCRAFT && in_task && has_next);
+  if (btnDirect) btnDirect->SetVisible(ISGAAIRCRAFT && show_direct_button && in_task &&
                                        (target_point > ActiveTaskPoint));
 }
 
