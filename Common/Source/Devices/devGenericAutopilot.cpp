@@ -51,6 +51,13 @@ std::string GenerateRMB(const NMEA_INFO& Basic, const DERIVED_INFO& Calculated) 
         next_index = GetOvertargetIndex();
       }
 
+      // GA only: DirectTo off-task fix overrides destination
+      if (ISGAAIRCRAFT && DirectToActive && DirectToWaypointIndex >= 0
+          && ValidWayPointFast(DirectToWaypointIndex)) {
+        next_index = DirectToWaypointIndex;
+        prev_index = -1;
+      }
+
       if (ValidWayPointFast(next_index)) {
         const WAYPOINT& next_tp = WayPointList[next_index];
         next_pos = GetWayPointPosition(next_tp);
@@ -60,7 +67,10 @@ std::string GenerateRMB(const NMEA_INFO& Basic, const DERIVED_INFO& Calculated) 
         current.Reverse(next_pos, bearing, distance);
         distance =  Units::To(unNauticalMiles, distance);
 
-        if (ValidWayPointFast(prev_index)) {
+        if (DirectToActive) {
+          const GeoPoint origin = {DirectToOriginLat, DirectToOriginLon};
+          xtd = CrossTrackError(origin, next_pos, current);
+        } else if (ValidWayPointFast(prev_index)) {
           const WAYPOINT& prev_tp = WayPointList[prev_index];
           const GeoPoint prev_pos = GetWayPointPosition(prev_tp);
           prev_name = to_utf8(WayPointList[prev_index].Name);
