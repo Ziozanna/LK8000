@@ -37,6 +37,7 @@
 #include "Library/Utm.h"
 #include "utils/tokenizer.h"
 #include "utils/lookup_table.h"
+#include "GADirectTo.h"
 #include <type_traits>
 #include "Waypoints/SetHome.h"
 #include "LocalPath.h"
@@ -886,7 +887,6 @@ void InputEvents::eventDirectToFromPan(const TCHAR* /*misc*/) {
 
   MapWindow::Event_Pan(0);  // exit pan mode before showing countdown
 
-  extern bool ShowDirectToFromPanDialog(int wp_index, double pan_lat, double pan_lon);
   ShowDirectToFromPanDialog(RESWP_PANPOS, pan_lat, pan_lon);
 }
 

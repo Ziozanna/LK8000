@@ -9,6 +9,7 @@
 #include "externs.h"
 #include "NavFunctions.h"
 #include "AATDistance.h"
+#include "GADirectTo.h"
 
 extern double AATCloseBearing(NMEA_INFO *Basic, DERIVED_INFO *Calculated);
 
@@ -22,15 +23,7 @@ void DistanceToNext(NMEA_INFO *Basic, DERIVED_INFO *Calculated)
       double w1lat, w1lon;
       double w0lat, w0lon;
 
-      if (ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex)) {
-        // GA off-task DirectTo: calculate distance/bearing to the fix, not the task point
-        w0lat = WayPointList[DirectToWaypointIndex].Latitude;
-        w0lon = WayPointList[DirectToWaypointIndex].Longitude;
-        DistanceBearing(Basic->Latitude, Basic->Longitude,
-                        w0lat, w0lon,
-                        &Calculated->WaypointDistance,
-                        &Calculated->WaypointBearing);
-        Calculated->ZoomDistance = Calculated->WaypointDistance;
+      if (GA_ComputeDirectToDistanceBearing(Basic, Calculated)) {
         UnlockTaskData();
         return;
       } else if(DoOptimizeRoute()) {
