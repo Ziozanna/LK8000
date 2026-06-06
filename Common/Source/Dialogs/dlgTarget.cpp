@@ -646,11 +646,17 @@ static void OnTargetApproachClicked(WndButton* pWnd) {
 static int countdown_seconds = 0;
 static TCHAR countdown_wp_name[NAME_SIZE] = {};
 static TCHAR countdown_sec_str[8] = {};
+static TCHAR countdown_info1[64] = {};  // "BRG 347°   DIST 15.3 km"
+static TCHAR countdown_info2[64] = {};  // "ETE 00:08  ETA 14:23"
 
 static void UpdateCountdownFrames(WndForm* pWnd) {
   WndFrame* frmWpName    = pWnd->FindByName<WndFrame>(TEXT("frmWpName"));
+  WndFrame* frmInfo1     = pWnd->FindByName<WndFrame>(TEXT("frmInfo1"));
+  WndFrame* frmInfo2     = pWnd->FindByName<WndFrame>(TEXT("frmInfo2"));
   WndFrame* frmCountdown = pWnd->FindByName<WndFrame>(TEXT("frmCountdown"));
   if (frmWpName)    frmWpName->SetCaption(countdown_wp_name);
+  if (frmInfo1)     frmInfo1->SetCaption(countdown_info1);
+  if (frmInfo2)     frmInfo2->SetCaption(countdown_info2);
   if (frmCountdown) {
     lk::snprintf(countdown_sec_str, TEXT("%d"), countdown_seconds);
     frmCountdown->SetCaption(countdown_sec_str);
@@ -678,22 +684,127 @@ static CallBackTableEntry_t CountdownCallBackTable[] = {
   EndCallbackEntry()
 };
 
+// Compute BRG/DIST and AvETE/AvETA for the countdown info rows.
+// Calls DoAlternates once on wp_index to get a fresh ETE estimate.
+static void ComputeCountdownInfo(int wp_index) {
+  countdown_info1[0] = 0;
+  countdown_info2[0] = 0;
+
+  if (!ValidWayPointFast(wp_index)) return;
+
+  double wp_lat, wp_lon;
+  {
+    const std::lock_guard lock(CritSec_TaskData);
+    wp_lat = WayPointList[wp_index].Latitude;
+    wp_lon = WayPointList[wp_index].Longitude;
+  }
+
+  double dist_m = 0., bearing = 0.;
+  DistanceBearing(GPS_INFO.Latitude, GPS_INFO.Longitude,
+                  wp_lat, wp_lon, &dist_m, &bearing);
+
+  // Fresh ETE via DoAlternates
+  DoAlternates(&GPS_INFO, &CALCULATED_INFO, wp_index);
+  double ete_s = WayPointCalc[wp_index].NextAvrETE;
+
+  TCHAR dist_buf[20];
+  lk::snprintf(dist_buf, _T("%.1f %s"),
+               Units::ToDistance(dist_m), Units::GetDistanceName());
+  lk::snprintf(countdown_info1, _T("BRG %.0f\xb0   DIST %s"), bearing, dist_buf);
+
+  TCHAR ete_buf[12];
+  TCHAR eta_buf[12];
+  lk::strcpy(ete_buf, _T("--:--"));
+  lk::strcpy(eta_buf, _T("--:--"));
+  if (ete_s > 0 && ete_s < ERROR_TIME) {
+    Units::TimeToTextDown(ete_buf, (int)ete_s);
+    Units::TimeToText(eta_buf, (int)(LocalTime(GPS_INFO.Time) + ete_s));
+  }
+  lk::snprintf(countdown_info2, _T("ETE %s  ETA %s"), ete_buf, eta_buf);
+}
+
+// Compute Oracle-style "15 km NE to/from PENNE" description for an arbitrary
+// map position.  Used when Direct To is activated from pan mode.
+static void ComputePanDescription(double pan_lat, double pan_lon,
+                                  TCHAR* buf, size_t bufsz) {
+  int nearest_wp = -1;
+  double min_dist = 1e20;
+  double ref_lat = 0., ref_lon = 0.;
+  TCHAR ref_name[NAME_SIZE] = {};
+
+  {
+    const std::lock_guard lock(CritSec_TaskData);
+    for (int i = NUMRESWP; i < (int)WayPointList.size(); i++) {
+      if (WayPointList[i].Latitude == RESWP_INVALIDNUMBER) continue;
+      double d = 0., b = 0.;
+      DistanceBearing(pan_lat, pan_lon,
+                      WayPointList[i].Latitude, WayPointList[i].Longitude,
+                      &d, &b);
+      if (d < min_dist) {
+        min_dist = d;
+        nearest_wp = i;
+        ref_lat = WayPointList[i].Latitude;
+        ref_lon = WayPointList[i].Longitude;
+        LK_tcsncpy(ref_name, WayPointList[i].Name, NAME_SIZE - 1);
+      }
+    }
+  }
+
+  if (nearest_wp < 0) {
+    lk::snprintf(buf, bufsz, _T("%.4f N %.4f E"), pan_lat, pan_lon);
+    return;
+  }
+
+  // Direction FROM reference WP TO pan position (compass sector)
+  double dist_from_ref = 0., bearing_from_ref = 0.;
+  DistanceBearing(ref_lat, ref_lon, pan_lat, pan_lon,
+                  &dist_from_ref, &bearing_from_ref);
+
+  static const TCHAR* dirs[] = {
+    _T("N"), _T("NE"), _T("E"), _T("SE"),
+    _T("S"), _T("SW"), _T("W"), _T("NW")
+  };
+  const TCHAR* dir_str = dirs[((int)((bearing_from_ref + 22.5) / 45.0)) % 8];
+
+  // to/from: < 90° between aircraft track and bearing to reference WP → approaching
+  double brg_to_ref = 0., d_to_ref = 0.;
+  DistanceBearing(GPS_INFO.Latitude, GPS_INFO.Longitude,
+                  ref_lat, ref_lon, &d_to_ref, &brg_to_ref);
+  bool approaching =
+      (fabs(AngleLimit180(brg_to_ref - GPS_INFO.TrackBearing)) < 90.0);
+
+  lk::snprintf(buf, bufsz, _T("%.0f km %s %s %s"),
+               dist_from_ref / 1000.0, dir_str,
+               approaching ? _T("to") : _T("from"),
+               ref_name);
+}
+
 // Shared countdown popup.
 // new_tp >= 0: task point (advances ActiveTaskPoint, clears DirectToWaypointIndex)
 // new_tp == -1: off-task waypoint; wp_index = WayPointList index (GA only)
-static bool RunDirectToCountdown(int new_tp, int wp_index) {
+// name_preset: if true, countdown_wp_name is already filled by the caller
+static bool RunDirectToCountdown(int new_tp, int wp_index,
+                                 bool name_preset = false) {
+  int info_wp = -1;
   {
     const std::lock_guard lock(CritSec_TaskData);
     if (new_tp >= 0) {
       if (!ValidTaskPoint(new_tp) || !ValidWayPointFast(Task[new_tp].Index))
         return false;
-      LK_tcsncpy(countdown_wp_name, WayPointList[Task[new_tp].Index].Name, NAME_SIZE - 1);
+      if (!name_preset)
+        LK_tcsncpy(countdown_wp_name, WayPointList[Task[new_tp].Index].Name,
+                   NAME_SIZE - 1);
+      info_wp = Task[new_tp].Index;
     } else {
       if (!ValidWayPointFast(wp_index))
         return false;
-      LK_tcsncpy(countdown_wp_name, WayPointList[wp_index].Name, NAME_SIZE - 1);
+      if (!name_preset)
+        LK_tcsncpy(countdown_wp_name, WayPointList[wp_index].Name, NAME_SIZE - 1);
+      info_wp = wp_index;
     }
   }
+
+  ComputeCountdownInfo(info_wp);
 
   std::unique_ptr<WndForm> pf(dlgLoadFromXML(CountdownCallBackTable,
       ScreenLandscape ? IDR_XML_DIRECTTO_COUNTDOWN_L : IDR_XML_DIRECTTO_COUNTDOWN_P));
@@ -710,6 +821,10 @@ static bool RunDirectToCountdown(int new_tp, int wp_index) {
   if (frmLabel) { frmLabel->SetCaption(TEXT("Direct to:")); frmLabel->SetCaptionStyle(centered); }
   WndFrame* frmWpName = pf->FindByName<WndFrame>(TEXT("frmWpName"));
   if (frmWpName) frmWpName->SetCaptionStyle(centered);
+  WndFrame* frmInfo1 = pf->FindByName<WndFrame>(TEXT("frmInfo1"));
+  if (frmInfo1) frmInfo1->SetCaptionStyle(centered);
+  WndFrame* frmInfo2 = pf->FindByName<WndFrame>(TEXT("frmInfo2"));
+  if (frmInfo2) frmInfo2->SetCaptionStyle(centered);
   WndFrame* frmCountdown = pf->FindByName<WndFrame>(TEXT("frmCountdown"));
   if (frmCountdown) frmCountdown->SetCaptionStyle(centered);
 
@@ -743,6 +858,14 @@ static bool ShowDirectToCountdownDialog(int new_tp) {
 // Called from dlgWayQuick (off-task waypoint Direct To in GA mode)
 bool ShowDirectToOffTaskDialog(int wp_index) {
   return RunDirectToCountdown(-1, wp_index);
+}
+
+// Called from pan mode Direct To button (eventDirectToFromPan).
+// pan_lat/lon: the coordinates of the map centre when the button was pressed.
+// wp_index must be RESWP_PANPOS, already written with those coordinates.
+bool ShowDirectToFromPanDialog(int wp_index, double pan_lat, double pan_lon) {
+  ComputePanDescription(pan_lat, pan_lon, countdown_wp_name, NAME_SIZE - 1);
+  return RunDirectToCountdown(-1, wp_index, /*name_preset=*/true);
 }
 
 // --- Navigation buttons (Next / Prev / Direct To) ---
