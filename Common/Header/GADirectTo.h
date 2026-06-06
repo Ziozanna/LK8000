@@ -28,6 +28,11 @@ int GA_GetDirectToNavIndex();
 // devGenericAutopilot wrapper: overrides prev/next indices with the DirectTo fix when active.
 void GA_ApplyDirectToAutopilotOverride(int& prev_index, int& next_index);
 
+// Find the first remaining task WP (from ActiveTaskPoint onwards) that is logically
+// ahead of the given position. Caller must hold CritSec_TaskData.
+// Returns the Task array index of that WP, or ActiveTaskPoint as fallback.
+int GA_FindNextForwardTaskWP(double from_lat, double from_lon);
+
 // --- Dialog functions (dlgDirectToCountdown.cpp) ---
 
 // Task-point Direct To (from Target dialog): counts down, then advances ActiveTaskPoint.

@@ -157,6 +157,7 @@ static void ComputePanDescription(double pan_lat, double pan_lon,
 static bool RunDirectToCountdown(int new_tp, int wp_index,
                                  bool name_preset = false) {
   int info_wp = -1;
+  int old_direct_wp = -1;  // previous DirectToWaypointIndex, saved for cancel restore
   {
     const std::lock_guard lock(CritSec_TaskData);
     if (new_tp >= 0) {
@@ -172,6 +173,12 @@ static bool RunDirectToCountdown(int new_tp, int wp_index,
       if (!name_preset)
         LK_tcsncpy(countdown_wp_name, WayPointList[wp_index].Name, NAME_SIZE - 1);
       info_wp = wp_index;
+      // Detach autopilot from the previous DirectTo target for the duration of
+      // the countdown.  Without this, writing new coordinates into RESWP_PANPOS
+      // while DirectToWaypointIndex already points there causes the autopilot
+      // to start commanding a turn immediately, before the pilot confirms.
+      old_direct_wp = DirectToWaypointIndex;
+      DirectToWaypointIndex = -1;
     }
   }
 
@@ -179,7 +186,14 @@ static bool RunDirectToCountdown(int new_tp, int wp_index,
 
   std::unique_ptr<WndForm> pf(dlgLoadFromXML(CountdownCallBackTable,
       ScreenLandscape ? IDR_XML_DIRECTTO_COUNTDOWN_L : IDR_XML_DIRECTTO_COUNTDOWN_P));
-  if (!pf) return false;
+  if (!pf) {
+    // Restore on early exit
+    if (new_tp < 0 && old_direct_wp >= 0) {
+      const std::lock_guard lock(CritSec_TaskData);
+      DirectToWaypointIndex = old_direct_wp;
+    }
+    return false;
+  }
 
   const PixelRect rc(main_window->GetClientRect());
   pf->SetLeft((rc.left + rc.GetSize().cx - (int)pf->GetWidth()) / 2);
@@ -202,8 +216,19 @@ static bool RunDirectToCountdown(int new_tp, int wp_index,
   UpdateCountdownFrames(pf.get());
   pf->SetTimerNotify(1000, OnDirectToCountdownTimer);
 
-  if (pf->ShowModal() != mrOK)
+  if (pf->ShowModal() != mrOK) {
+    // Pilot cancelled.  Restore previous DirectTo state if it was a different
+    // waypoint (not RESWP_PANPOS reuse — in that case the coordinates are
+    // already overwritten so we cannot meaningfully restore).
+    const std::lock_guard lock(CritSec_TaskData);
+    if (new_tp < 0 && old_direct_wp >= 0 && old_direct_wp != wp_index) {
+      DirectToWaypointIndex = old_direct_wp;
+    } else if (new_tp < 0) {
+      DirectToActive = false;
+      DirectToWaypointIndex = -1;
+    }
     return false;
+  }
 
   const std::lock_guard lock(CritSec_TaskData);
   DirectToActive = true;

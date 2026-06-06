@@ -38,12 +38,7 @@ void GA_CheckDirectToOffTaskArrival(NMEA_INFO* Basic) {
                   WayPointList[DirectToWaypointIndex].Longitude,
                   &dist, &bearing);
 
-  double radius = 500.;
-  if (ValidTaskPointFast(ActiveTaskPoint)) {
-    radius = (Task[ActiveTaskPoint].AATType == sector_type_t::SECTOR)
-             ? Task[ActiveTaskPoint].AATSectorRadius
-             : Task[ActiveTaskPoint].AATCircleRadius;
-  }
+  constexpr double radius = 1000.;
 
   if (dist < radius) {
     const double fix_lat = WayPointList[DirectToWaypointIndex].Latitude;
@@ -52,23 +47,45 @@ void GA_CheckDirectToOffTaskArrival(NMEA_INFO* Basic) {
     DirectToOriginLat = fix_lat;
     DirectToOriginLon = fix_lon;
 
-    double min_dist = 1e20;
-    int nearest_tp = ActiveTaskPoint;
-    for (int i = ActiveTaskPoint; i < MAXTASKPOINTS; i++) {
-      if (!ValidTaskPointFast(i)) break;
-      double d = 0., b = 0.;
-      DistanceBearing(fix_lat, fix_lon,
-                      WayPointList[Task[i].Index].Latitude,
-                      WayPointList[Task[i].Index].Longitude,
-                      &d, &b);
-      if (d < min_dist) {
-        min_dist = d;
-        nearest_tp = i;
-      }
-    }
-    ActiveTaskPoint = nearest_tp;
+    ActiveTaskPoint = GA_FindNextForwardTaskWP(fix_lat, fix_lon);
     DirectToWaypointIndex = -1;
   }
+}
+
+int GA_FindNextForwardTaskWP(double from_lat, double from_lon) {
+  int result = ActiveTaskPoint;
+
+  for (int i = ActiveTaskPoint; i < MAXTASKPOINTS; i++) {
+    if (!ValidTaskPointFast(i)) break;
+    result = i;
+
+    // No previous WP: cannot determine leg direction, treat as always ahead.
+    if (i == 0 || !ValidTaskPointFast(i - 1)) break;
+
+    // Bearing of the task leg arriving at WP[i] (direction WP[i-1] -> WP[i]).
+    double leg_bearing = 0., d = 0.;
+    DistanceBearing(WayPointList[Task[i-1].Index].Latitude,
+                    WayPointList[Task[i-1].Index].Longitude,
+                    WayPointList[Task[i].Index].Latitude,
+                    WayPointList[Task[i].Index].Longitude,
+                    &d, &leg_bearing);
+
+    // Bearing from WP[i] toward the reference position.
+    double wp_to_pos = 0.;
+    DistanceBearing(WayPointList[Task[i].Index].Latitude,
+                    WayPointList[Task[i].Index].Longitude,
+                    from_lat, from_lon,
+                    &d, &wp_to_pos);
+
+    // If the reference position is in the "forward" half-plane of WP[i]
+    // (within 90° of the leg direction), the position has passed WP[i] — skip it.
+    if (fabs(AngleLimit180(wp_to_pos - leg_bearing)) < 90.) continue;
+
+    // WP[i] is still ahead of the position.
+    break;
+  }
+
+  return result;
 }
 
 bool GA_ComputeDirectToDistanceBearing(NMEA_INFO* Basic, DERIVED_INFO* Calculated) {

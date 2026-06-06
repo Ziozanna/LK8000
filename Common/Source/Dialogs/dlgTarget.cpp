@@ -34,6 +34,7 @@ static double Radial = 0;
 static int target_point = 0;
 static bool TargetMoveMode = false;
 static bool show_direct_button = false;
+static bool ga_offtask_browsing = false;
 
 static unsigned dlgSize = 0;
 
@@ -398,8 +399,9 @@ static void ApplyTargetPanIfNeeded(void) {
   if (!wf || !TargetDialogOpen) return;
   dlgSize = ScreenLandscape ? wf->GetWidth() : wf->GetHeight();
 
-  // GA off-task DirectTo: pan map to the fix, not the task point
-  if (ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex)) {
+  // GA off-task DirectTo: pan map to the fix (unless user is browsing forward task WPs)
+  if (ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex)
+      && !ga_offtask_browsing) {
     MapWindow::SetTargetPanWaypoint(DirectToWaypointIndex, dlgSize);
     return;
   }
@@ -432,7 +434,8 @@ static void RefreshCalculator(void) {
   nodisplay = nodisplay || TargetMoveMode;
 
   const bool isGA = ISGAAIRCRAFT;
-  const bool ga_offtask_active = isGA && DirectToActive && ValidWayPointFast(DirectToWaypointIndex);
+  const bool ga_offtask_active = isGA && DirectToActive && ValidWayPointFast(DirectToWaypointIndex)
+                                  && !ga_offtask_browsing;
 
   // When off-task DirectTo is active: show fix name in title, hide task point selector
   if (ga_offtask_active) {
@@ -530,7 +533,8 @@ static void RefreshCalculator(void) {
     if (pETA)  pETA->SetVisible(isGA);
 
     // When GA Direct To to an off-task fix is active, calculate toward that fix
-    const int ga_calc_wp = (isGA && DirectToActive && ValidWayPointFast(DirectToWaypointIndex))
+    const int ga_calc_wp = (isGA && DirectToActive && ValidWayPointFast(DirectToWaypointIndex)
+                            && !ga_offtask_browsing)
                            ? DirectToWaypointIndex
                            : (ValidTaskPoint(target_point) ? Task[target_point].Index : -1);
 
@@ -628,9 +632,9 @@ static void OnMoveClicked(WndButton* pWnd) {
 /// Closes Target only if a task was created (Approve clicked); on Ignore the user returns to Target.
 static void OnTargetApproachClicked(WndButton* pWnd) {
   int wp_index = -1;
-  // GA Direct To: open approach for the off-task fix if active and landable
+  // GA Direct To: open approach for the off-task fix if active, landable, and not browsing
   if (ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex) &&
-      WayPointCalc[DirectToWaypointIndex].IsLandable) {
+      WayPointCalc[DirectToWaypointIndex].IsLandable && !ga_offtask_browsing) {
     wp_index = DirectToWaypointIndex;
   } else {
     if (!CanOpenApproachForTargetPoint(target_point, &wp_index)) return;
@@ -654,16 +658,26 @@ static void UpdateNavButtons() {
   bool in_task = false;
   bool has_prev = false;
   bool has_next = false;
+  bool has_forward_wp = false;
   {
     const std::lock_guard lock(CritSec_TaskData);
     in_task = (ActiveTaskPoint >= 0) && ValidTaskPoint(target_point);
     has_prev = in_task && (target_point > ActiveTaskPoint) && ValidTaskPoint(target_point - 1);
     has_next = in_task && ValidTaskPoint(target_point + 1);
+    // While off-task DirectTo is active and user has not started browsing yet,
+    // check whether there is a logically forward task WP to offer via Next.
+    if (ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex)
+        && !ga_offtask_browsing) {
+      has_forward_wp = ValidTaskPoint(
+          GA_FindNextForwardTaskWP(GPS_INFO.Latitude, GPS_INFO.Longitude));
+    }
   }
 
-  const bool ga_offtask = ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex);
+  const bool ga_offtask = ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex)
+                           && !ga_offtask_browsing;
   if (btnPrev)   btnPrev->SetVisible(ISGAAIRCRAFT && !ga_offtask && in_task && has_prev);
-  if (btnNext)   btnNext->SetVisible(ISGAAIRCRAFT && !ga_offtask && in_task && has_next);
+  if (btnNext)   btnNext->SetVisible(ISGAAIRCRAFT && ((!ga_offtask && in_task && has_next)
+                                                      || (ga_offtask && has_forward_wp)));
   if (btnDirect) btnDirect->SetVisible(ISGAAIRCRAFT && !ga_offtask && show_direct_button && in_task &&
                                        (target_point > ActiveTaskPoint));
 }
@@ -683,6 +697,24 @@ static void OnPrevClicked(WndButton* /*pWnd*/) {
 }
 
 static void OnNextClicked(WndButton* /*pWnd*/) {
+  // First Next press during off-task DirectTo: jump to the first forward task WP.
+  if (ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex)
+      && !ga_offtask_browsing) {
+    int fwd = -1;
+    {
+      const std::lock_guard lock(CritSec_TaskData);
+      fwd = GA_FindNextForwardTaskWP(GPS_INFO.Latitude, GPS_INFO.Longitude);
+    }
+    if (!ValidTaskPoint(fwd)) return;
+    target_point = fwd;
+    ga_offtask_browsing = true;
+    show_direct_button = true;
+    RefreshTargetPoint();
+    UpdateNavButtons();
+    ApplyTargetPanIfNeeded();
+    return;
+  }
+
   bool valid = false;
   {
     const std::lock_guard lock(CritSec_TaskData);
@@ -883,6 +915,7 @@ void dlgTarget(int TaskPoint) {
   TargetDialogOpen = true;
   TargetMoveMode = false;
   show_direct_button = false;
+  ga_offtask_browsing = false;
 
   const PixelRect rc(main_window->GetClientRect());
   if (ScreenLandscape) {
