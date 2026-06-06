@@ -723,15 +723,11 @@ static void ComputeCountdownInfo(int wp_index) {
   lk::snprintf(countdown_info2, _T("ETE %s  ETA %s"), ete_buf, eta_buf);
 }
 
-// Compute Oracle-style "15 km NE to/from PENNE" description for the aircraft's
-// current position.  Used when Direct To is activated from pan mode.
-static void ComputePanDescription(double /*pan_lat*/, double /*pan_lon*/,
+// Compute "15 km SE PENNE" description for the Direct To destination.
+// Finds the nearest known waypoint to the pan position and formats
+// distance + compass direction + waypoint name.
+static void ComputePanDescription(double pan_lat, double pan_lon,
                                   TCHAR* buf, size_t bufsz) {
-  // Aircraft position at the moment the button was pressed
-  double ac_lat = GPS_INFO.Latitude;
-  double ac_lon = GPS_INFO.Longitude;
-  double ac_track = GPS_INFO.TrackBearing;
-
   int nearest_wp = -1;
   double min_dist = 1e20;
   double ref_lat = 0., ref_lon = 0.;
@@ -742,7 +738,7 @@ static void ComputePanDescription(double /*pan_lat*/, double /*pan_lon*/,
     for (int i = NUMRESWP; i < (int)WayPointList.size(); i++) {
       if (WayPointList[i].Latitude == RESWP_INVALIDNUMBER) continue;
       double d = 0., b = 0.;
-      DistanceBearing(ac_lat, ac_lon,
+      DistanceBearing(pan_lat, pan_lon,
                       WayPointList[i].Latitude, WayPointList[i].Longitude,
                       &d, &b);
       if (d < min_dist) {
@@ -756,13 +752,13 @@ static void ComputePanDescription(double /*pan_lat*/, double /*pan_lon*/,
   }
 
   if (nearest_wp < 0) {
-    lk::snprintf(buf, bufsz, _T("%.4f N %.4f E"), ac_lat, ac_lon);
+    lk::snprintf(buf, bufsz, _T("%.4f N %.4f E"), pan_lat, pan_lon);
     return;
   }
 
-  // Direction FROM reference WP TO aircraft (compass sector describing aircraft position)
+  // Direction FROM reference WP TO destination (compass sector)
   double dist_from_ref = 0., bearing_from_ref = 0.;
-  DistanceBearing(ref_lat, ref_lon, ac_lat, ac_lon,
+  DistanceBearing(ref_lat, ref_lon, pan_lat, pan_lon,
                   &dist_from_ref, &bearing_from_ref);
 
   static const TCHAR* dirs[] = {
@@ -771,15 +767,8 @@ static void ComputePanDescription(double /*pan_lat*/, double /*pan_lon*/,
   };
   const TCHAR* dir_str = dirs[((int)((bearing_from_ref + 22.5) / 45.0)) % 8];
 
-  // to/from: < 90° between aircraft track and bearing FROM aircraft TO reference WP
-  double brg_to_ref = 0., d_to_ref = 0.;
-  DistanceBearing(ac_lat, ac_lon, ref_lat, ref_lon, &d_to_ref, &brg_to_ref);
-  bool approaching = (fabs(AngleLimit180(brg_to_ref - ac_track)) < 90.0);
-
-  lk::snprintf(buf, bufsz, _T("%.0f km %s %s %s"),
-               dist_from_ref / 1000.0, dir_str,
-               approaching ? _T("to") : _T("from"),
-               ref_name);
+  lk::snprintf(buf, bufsz, _T("%.0f km %s %s"),
+               dist_from_ref / 1000.0, dir_str, ref_name);
 }
 
 // Shared countdown popup.
