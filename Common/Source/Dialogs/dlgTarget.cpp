@@ -723,27 +723,38 @@ static void ComputeCountdownInfo(int wp_index) {
   lk::snprintf(countdown_info2, _T("ETE %s  ETA %s"), ete_buf, eta_buf);
 }
 
-// Compute "15 km SE PENNE" description for the Direct To destination.
-// Searches WayPointList with priority: airports > outlandings > turnpoints > any.
-// Within each tier picks the nearest to pan_lat/pan_lon.
+// Format "15 km SE NAME" from reference WP coords to destination.
+static void FormatRef(TCHAR* out, size_t outsz,
+                      double ref_lat, double ref_lon,
+                      double pan_lat, double pan_lon,
+                      const TCHAR* name) {
+  double dist = 0., bearing = 0.;
+  DistanceBearing(ref_lat, ref_lon, pan_lat, pan_lon, &dist, &bearing);
+  static const TCHAR* dirs[] = {
+    _T("N"), _T("NE"), _T("E"), _T("SE"),
+    _T("S"), _T("SW"), _T("W"), _T("NW")
+  };
+  lk::snprintf(out, outsz, _T("%.0f km %s %s"),
+               dist / 1000.0,
+               dirs[((int)((bearing + 22.5) / 45.0)) % 8],
+               name);
+}
+
+// Compute destination description for the Direct To countdown.
+// Primary reference: nearest airport ≤80 km, else outlanding ≤30 km, else
+// turnpoint ≤15 km, else nearest anything (Oracle-style Option A logic).
+// If primary is not an airport, appends "/ nearest airport" as second ref.
+// Result: "3 km NE CAMPO TREVISO / 18 km SE LINATE"  or  "18 km SE LINATE"
 static void ComputePanDescription(double pan_lat, double pan_lon,
                                   TCHAR* buf, size_t bufsz) {
-  // Per-tier tracking: index and distance for each priority level
-  constexpr int TIERS = 4;  // airport, outlanding, turnpoint, other
-  int   best_idx[TIERS]  = {-1, -1, -1, -1};
-  double best_dist[TIERS] = {1e20, 1e20, 1e20, 1e20};
-  double best_lat[TIERS]  = {};
-  double best_lon[TIERS]  = {};
-  TCHAR  best_name[TIERS][NAME_SIZE] = {};
+  // Distance caps (metres) per tier
+  constexpr double CAP_AIRPORT    = 80000.;
+  constexpr double CAP_OUTLANDING = 30000.;
+  constexpr double CAP_TURNPOINT  = 15000.;
 
-  auto tier_of = [](short wpt) -> int {
-    switch (wpt) {
-      case WPT_AIRPORT:    return 0;
-      case WPT_OUTLANDING: return 1;
-      case WPT_TURNPOINT:  return 2;
-      default:             return 3;
-    }
-  };
+  // Per-tier nearest: index, distance, lat, lon, name
+  struct Candidate { int idx=-1; double dist=1e20, lat=0., lon=0.; TCHAR name[NAME_SIZE]={}; };
+  Candidate airport, outlanding, turnpoint, any_wp, nearest_airport;
 
   {
     const std::lock_guard lock(CritSec_TaskData);
@@ -753,41 +764,56 @@ static void ComputePanDescription(double pan_lat, double pan_lon,
       DistanceBearing(pan_lat, pan_lon,
                       WayPointList[i].Latitude, WayPointList[i].Longitude,
                       &d, &b);
-      int t = tier_of(WayPointCalc[i].WpType);
-      if (d < best_dist[t]) {
-        best_dist[t] = d;
-        best_idx[t]  = i;
-        best_lat[t]  = WayPointList[i].Latitude;
-        best_lon[t]  = WayPointList[i].Longitude;
-        LK_tcsncpy(best_name[t], WayPointList[i].Name, NAME_SIZE - 1);
+      auto fill = [&](Candidate& c) {
+        c.idx = i; c.dist = d;
+        c.lat = WayPointList[i].Latitude;
+        c.lon = WayPointList[i].Longitude;
+        LK_tcsncpy(c.name, WayPointList[i].Name, NAME_SIZE - 1);
+      };
+      switch (WayPointCalc[i].WpType) {
+        case WPT_AIRPORT:
+          if (d < airport.dist)         fill(airport);
+          if (d < nearest_airport.dist) fill(nearest_airport);
+          break;
+        case WPT_OUTLANDING:
+          if (d < outlanding.dist) fill(outlanding);
+          break;
+        case WPT_TURNPOINT:
+          if (d < turnpoint.dist) fill(turnpoint);
+          break;
+        default:
+          break;
       }
+      if (d < any_wp.dist) fill(any_wp);
     }
   }
 
-  // Pick highest-priority tier that found something
-  int chosen = -1;
-  for (int t = 0; t < TIERS; t++) {
-    if (best_idx[t] >= 0) { chosen = t; break; }
-  }
+  // Choose primary reference using Oracle-style caps
+  Candidate* primary = nullptr;
+  if (airport.idx   >= 0 && airport.dist   <= CAP_AIRPORT)    primary = &airport;
+  else if (outlanding.idx >= 0 && outlanding.dist <= CAP_OUTLANDING) primary = &outlanding;
+  else if (turnpoint.idx  >= 0 && turnpoint.dist  <= CAP_TURNPOINT)  primary = &turnpoint;
+  else if (any_wp.idx >= 0) primary = &any_wp;
 
-  if (chosen < 0) {
+  if (!primary) {
     lk::snprintf(buf, bufsz, _T("%.4f N %.4f E"), pan_lat, pan_lon);
     return;
   }
 
-  // Direction FROM chosen reference WP TO destination (compass sector)
-  double dist_from_ref = 0., bearing_from_ref = 0.;
-  DistanceBearing(best_lat[chosen], best_lon[chosen], pan_lat, pan_lon,
-                  &dist_from_ref, &bearing_from_ref);
+  TCHAR primary_str[64];
+  FormatRef(primary_str, std::size(primary_str),
+            primary->lat, primary->lon, pan_lat, pan_lon, primary->name);
 
-  static const TCHAR* dirs[] = {
-    _T("N"), _T("NE"), _T("E"), _T("SE"),
-    _T("S"), _T("SW"), _T("W"), _T("NW")
-  };
-  const TCHAR* dir_str = dirs[((int)((bearing_from_ref + 22.5) / 45.0)) % 8];
-
-  lk::snprintf(buf, bufsz, _T("%.0f km %s %s"),
-               dist_from_ref / 1000.0, dir_str, best_name[chosen]);
+  // Append nearest airport if it differs from primary
+  if (nearest_airport.idx >= 0 && nearest_airport.idx != primary->idx) {
+    TCHAR airport_str[64];
+    FormatRef(airport_str, std::size(airport_str),
+              nearest_airport.lat, nearest_airport.lon,
+              pan_lat, pan_lon, nearest_airport.name);
+    lk::snprintf(buf, bufsz, _T("%s / %s"), primary_str, airport_str);
+  } else {
+    lk::strcpy(buf, primary_str, bufsz);
+  }
 }
 
 // Shared countdown popup.
