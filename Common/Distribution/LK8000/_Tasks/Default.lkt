@@ -1,24 +1,49 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <lk-task type="Default">
 	<options auto-advance="Auto">
-		<start type="circle" radius="2000"/>
-		<finish type="line" Radius="2000"/>
-		<sector type="sector" Radius="5000"/>
-		<rules>
-			<finish fai-height="true" min-height="0"/>
-			<start max-height="0" max-height-margin="0" max-speed="69444" max-speed-margin="13889" height-ref="AGL"/>
-		</rules>
+		<start type="line" radius="1000.000000"/>
+		<finish type="circle" radius="500.000000"/>
+		<sector type="circle" radius="1000.000000"/>
 	</options>
+	<rules>
+		<finish fai-height="false" min-height="0"/>
+		<start max-height="0" max-height-margin="0" max-speed="0" max-speed-margin="0" height-ref="AGL"/>
+	</rules>
 	<taskpoints>
-		<point idx="0" name="Ubione"/>
-		<point idx="1" name="Brunate"/>
-		<point idx="2" name="Legnone"/>
-		<point idx="3" name="Ubione"/>
+		<point idx="0" name="SIBARI FLY - CS11"/>
+		<point idx="1" name="POLICORO"/>
+		<point idx="2" name="LAGO LAVELLO"/>
+		<point idx="3" name="NORTH LUCERA"/>
+		<point idx="4" name="SAN VITO CHIETINO"/>
+		<point idx="5" name="ROSETO DEGLI ABRUZZI"/>
+		<point idx="6" name="CIVITANOVA"/>
+		<point idx="7" name="ANCONA"/>
+		<point idx="8" name="SENIGALLIA"/>
+		<point idx="9" name="FANO"/>
+		<point idx="10" name="MELDOLA"/>
+		<point idx="11" name="BORGONUOVO"/>
+		<point idx="12" name="TRAVERSETOLO"/>
+		<point idx="13" name="COLLECCHIO"/>
+		<point idx="14" name="PONTE TARO"/>
+		<point idx="15" name="MASSALENGO"/>
 	</taskpoints>
 	<waypoints>
-		<point name="Brunate" latitude="45.825000" longitude="9.115283" altitude="906.000000" flags="2" code="BRUNAT" format="2" country="IT" style="1"/>
-		<point name="Ubione" latitude="45.775933" longitude="9.593383" altitude="895.000000" flags="2" code="Ubione" comment="895" format="2" country="IT" style="7"/>
-		<point name="Legnone" latitude="46.094050" longitude="9.414100" altitude="2609.000000" flags="2" code="Legnone" comment="1400 m" format="2" style="7"/>
+		<point name="SIBARI FLY - CS11" latitude="39.756933" longitude="16.438333" altitude="2.000000" flags="5" code="CS11" comment="SIBARY FLY" format="2" freq="130.000" runwayLen="850" runwayDir="120" country="IT" style="2"/>
+		<point name="MASSALENGO" latitude="45.276000" longitude="9.483000" altitude="73.000000" flags="16" comment="MASSALENGO" details="MASSALENGO" format="5" style="1"/>
+		<point name="PONTE TARO" latitude="44.826110" longitude="10.211940" altitude="0.000000" flags="130" comment="PONTE TARO" details="PONTE TARO" format="5" style="1"/>
+		<point name="COLLECCHIO" latitude="44.750560" longitude="10.219720" altitude="0.000000" flags="130" comment="COLLECCHIO" details="COLLECCHIO" format="5" style="1"/>
+		<point name="TRAVERSETOLO" latitude="44.643890" longitude="10.381390" altitude="0.000000" flags="130" comment="TRAVERSETOLO" details="TRAVERSETOLO" format="5" style="1"/>
+		<point name="BORGONUOVO" latitude="44.445560" longitude="11.270280" altitude="0.000000" flags="130" comment="BORGONUOVO" details="BORGONUOVO" format="5" style="1"/>
+		<point name="MELDOLA" latitude="44.126390" longitude="12.061110" altitude="0.000000" flags="130" comment="MELDOLA" details="MELDOLA" format="5" style="1"/>
+		<point name="FANO" latitude="43.823889" longitude="13.025833" altitude="16.000000" flags="130" comment="FANO" details="FANO" format="5" style="1"/>
+		<point name="SENIGALLIA" latitude="43.716670" longitude="13.216670" altitude="0.000000" flags="130" comment="SENIGALLIA" details="SENIGALLIA" format="5" style="1"/>
+		<point name="ANCONA" latitude="43.621390" longitude="13.500280" altitude="0.000000" flags="130" comment="ANCONA" details="ANCONA" format="5" style="1"/>
+		<point name="CIVITANOVA" latitude="43.313890" longitude="13.730560" altitude="0.000000" flags="130" comment="CIVITANOVA" details="CIVITANOVA" format="5" style="1"/>
+		<point name="ROSETO DEGLI ABRUZZI" latitude="42.672220" longitude="14.019440" altitude="0.000000" flags="130" comment="ROSETO DEGLI ABRUZZI" details="ROSETO DEGLI ABRUZZI" format="5" style="1"/>
+		<point name="SAN VITO CHIETINO" latitude="42.295830" longitude="14.469440" altitude="0.000000" flags="130" comment="SAN VITO CHIETINO" details="SAN VITO CHIETINO" format="5" style="1"/>
+		<point name="NORTH LUCERA" latitude="41.532500" longitude="15.257220" altitude="0.000000" flags="130" comment="NORTH LUCERA" details="NORTH LUCERA" format="5" style="1"/>
+		<point name="LAGO LAVELLO" latitude="41.124720" longitude="15.735280" altitude="0.000000" flags="130" comment="LAGO LAVELLO" details="LAGO LAVELLO" format="5" style="1"/>
+		<point name="POLICORO" latitude="40.163000" longitude="16.669000" altitude="4.000000" flags="130" comment="POLICORO" details="POLICORO" format="5" style="1"/>
 	</waypoints>
 </lk-task>
 
