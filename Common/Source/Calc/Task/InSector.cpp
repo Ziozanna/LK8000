@@ -12,6 +12,27 @@
 #include "Calc/Task/TimeGates.h"
 #include "NavFunctions.h"
 
+// GA only: slide the DirectTo XTE origin forward while the aircraft is not yet
+// on course toward the fix.  Once the GPS track is within COURSE_CAPTURE_DEG of
+// the bearing to the fix the origin locks and XTE becomes meaningful.
+static void UpdateDirectToOriginForCourseCapture(NMEA_INFO* Basic) {
+  if (!ISGAAIRCRAFT) return;
+  if (!DirectToActive || DirectToWaypointIndex < 0) return;
+  if (!ValidWayPointFast(DirectToWaypointIndex)) return;
+
+  double dist = 0., bearing_to_fix = 0.;
+  DistanceBearing(Basic->Latitude, Basic->Longitude,
+                  WayPointList[DirectToWaypointIndex].Latitude,
+                  WayPointList[DirectToWaypointIndex].Longitude,
+                  &dist, &bearing_to_fix);
+
+  constexpr double COURSE_CAPTURE_DEG = 15.0;
+  if (fabs(AngleLimit180(bearing_to_fix - Basic->TrackBearing)) > COURSE_CAPTURE_DEG) {
+    DirectToOriginLat = Basic->Latitude;
+    DirectToOriginLon = Basic->Longitude;
+  }
+}
+
 // GA only: check arrival at an off-task DirectTo fix and transition to task leg.
 // Called each cycle when DirectToWaypointIndex >= 0.
 static void CheckDirectToOffTaskArrival(NMEA_INFO* Basic) {
@@ -67,6 +88,7 @@ void InSector(NMEA_INFO* Basic, DERIVED_INFO* Calculated) {
 
   const std::lock_guard lock(CritSec_TaskData);
 
+  UpdateDirectToOriginForCourseCapture(Basic);
   CheckDirectToOffTaskArrival(Basic);
 
   if (ActiveTaskPoint < 0) {
