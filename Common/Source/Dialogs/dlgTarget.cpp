@@ -724,14 +724,26 @@ static void ComputeCountdownInfo(int wp_index) {
 }
 
 // Compute "15 km SE PENNE" description for the Direct To destination.
-// Finds the nearest known waypoint to the pan position and formats
-// distance + compass direction + waypoint name.
+// Searches WayPointList with priority: airports > outlandings > turnpoints > any.
+// Within each tier picks the nearest to pan_lat/pan_lon.
 static void ComputePanDescription(double pan_lat, double pan_lon,
                                   TCHAR* buf, size_t bufsz) {
-  int nearest_wp = -1;
-  double min_dist = 1e20;
-  double ref_lat = 0., ref_lon = 0.;
-  TCHAR ref_name[NAME_SIZE] = {};
+  // Per-tier tracking: index and distance for each priority level
+  constexpr int TIERS = 4;  // airport, outlanding, turnpoint, other
+  int   best_idx[TIERS]  = {-1, -1, -1, -1};
+  double best_dist[TIERS] = {1e20, 1e20, 1e20, 1e20};
+  double best_lat[TIERS]  = {};
+  double best_lon[TIERS]  = {};
+  TCHAR  best_name[TIERS][NAME_SIZE] = {};
+
+  auto tier_of = [](short wpt) -> int {
+    switch (wpt) {
+      case WPT_AIRPORT:    return 0;
+      case WPT_OUTLANDING: return 1;
+      case WPT_TURNPOINT:  return 2;
+      default:             return 3;
+    }
+  };
 
   {
     const std::lock_guard lock(CritSec_TaskData);
@@ -741,24 +753,31 @@ static void ComputePanDescription(double pan_lat, double pan_lon,
       DistanceBearing(pan_lat, pan_lon,
                       WayPointList[i].Latitude, WayPointList[i].Longitude,
                       &d, &b);
-      if (d < min_dist) {
-        min_dist = d;
-        nearest_wp = i;
-        ref_lat = WayPointList[i].Latitude;
-        ref_lon = WayPointList[i].Longitude;
-        LK_tcsncpy(ref_name, WayPointList[i].Name, NAME_SIZE - 1);
+      int t = tier_of(WayPointCalc[i].WpType);
+      if (d < best_dist[t]) {
+        best_dist[t] = d;
+        best_idx[t]  = i;
+        best_lat[t]  = WayPointList[i].Latitude;
+        best_lon[t]  = WayPointList[i].Longitude;
+        LK_tcsncpy(best_name[t], WayPointList[i].Name, NAME_SIZE - 1);
       }
     }
   }
 
-  if (nearest_wp < 0) {
+  // Pick highest-priority tier that found something
+  int chosen = -1;
+  for (int t = 0; t < TIERS; t++) {
+    if (best_idx[t] >= 0) { chosen = t; break; }
+  }
+
+  if (chosen < 0) {
     lk::snprintf(buf, bufsz, _T("%.4f N %.4f E"), pan_lat, pan_lon);
     return;
   }
 
-  // Direction FROM reference WP TO destination (compass sector)
+  // Direction FROM chosen reference WP TO destination (compass sector)
   double dist_from_ref = 0., bearing_from_ref = 0.;
-  DistanceBearing(ref_lat, ref_lon, pan_lat, pan_lon,
+  DistanceBearing(best_lat[chosen], best_lon[chosen], pan_lat, pan_lon,
                   &dist_from_ref, &bearing_from_ref);
 
   static const TCHAR* dirs[] = {
@@ -768,7 +787,7 @@ static void ComputePanDescription(double pan_lat, double pan_lon,
   const TCHAR* dir_str = dirs[((int)((bearing_from_ref + 22.5) / 45.0)) % 8];
 
   lk::snprintf(buf, bufsz, _T("%.0f km %s %s"),
-               dist_from_ref / 1000.0, dir_str, ref_name);
+               dist_from_ref / 1000.0, dir_str, best_name[chosen]);
 }
 
 // Shared countdown popup.
