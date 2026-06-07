@@ -403,11 +403,26 @@ static void ApplyTargetPanIfNeeded(void) {
   if (ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex)
       && !ga_offtask_browsing) {
     MapWindow::SetTargetPanWaypoint(DirectToWaypointIndex, dlgSize);
+    // Bearing line follows the active Direct To fix — no browse override needed.
+    GA_SetTargetBrowseWP(-1, -1);
     return;
   }
 
   if (!ValidTaskPoint(target_point)) return;
   MapWindow::SetTargetPan(true, target_point, dlgSize);
+
+  // GA: tell the nav system which WP the pilot is looking at so:
+  //   1. GA_GetDirectToNavIndex() returns Task[target_point].Index
+  //      → bearing line draws aircraft → browsed fix (not aircraft → ActiveTaskPoint).
+  //   2. GA_GetTargetPanLoopStart() returns target_point
+  //      → DrawBearing leg loop starts from the browsed WP, giving exactly
+  //         two lines: aircraft→fix and fix→next, regardless of ActiveTaskPoint.
+  if (ISGAAIRCRAFT) {
+    const std::lock_guard lock(CritSec_TaskData);
+    const int browse_wp = ValidWayPointFast(Task[target_point].Index)
+                          ? Task[target_point].Index : -1;
+    GA_SetTargetBrowseWP(browse_wp, browse_wp >= 0 ? target_point : -1);
+  }
 }
 
 /// Refresh Target dialog fields and show/hide Approach button for landable waypoints.
@@ -662,7 +677,9 @@ static void UpdateNavButtons() {
   {
     const std::lock_guard lock(CritSec_TaskData);
     in_task = (ActiveTaskPoint >= 0) && ValidTaskPoint(target_point);
-    has_prev = in_task && (target_point > ActiveTaskPoint) && ValidTaskPoint(target_point - 1);
+    // Allow scrolling back to WP[0] (not just past ActiveTaskPoint) so the pilot
+    // can review or navigate to any earlier task point if ATC requires it.
+    has_prev = in_task && (target_point > 0) && ValidTaskPoint(target_point - 1);
     has_next = in_task && ValidTaskPoint(target_point + 1);
     // While off-task DirectTo is active and user has not started browsing yet,
     // check whether there is a logically forward task WP to offer via Next.
@@ -901,10 +918,17 @@ static CallBackTableEntry_t CallBackTable[]={
 
 void dlgTarget(int TaskPoint) {
 
-  if(TaskPoint == -1)
-	  TaskPoint =  ActiveTaskPoint;
+  if (TaskPoint == -1)
+    TaskPoint = ActiveTaskPoint;
+
   if (!ValidTaskPoint(TaskPoint)) {
-    return;
+    // GA: allow opening even with no task when Direct To is active — the dialog
+    // will show fix name, Dist/ETE/ETA via the ga_offtask_active path in
+    // RefreshCalculator.  For all other aircraft (or GA with no DirectTo), bail out.
+    if (!(ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex))) {
+      return;
+    }
+    TaskPoint = -1;  // no task WP — dialog opens in DirectTo-only display mode
   }
   target_point = TaskPoint;
 
@@ -982,6 +1006,9 @@ void dlgTarget(int TaskPoint) {
   wf->ShowModal();
 
   MapWindow::SetTargetPan(false, 0);
+
+  // Clear GA browse override so the bearing line reverts to the active nav target.
+  if (ISGAAIRCRAFT) GA_SetTargetBrowseWP(-1, -1);
 
   TargetDialogOpen = false;
 

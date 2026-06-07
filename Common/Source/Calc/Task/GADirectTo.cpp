@@ -101,10 +101,43 @@ bool GA_ComputeDirectToDistanceBearing(NMEA_INFO* Basic, DERIVED_INFO* Calculate
   return true;
 }
 
+// Waypoint index set by the Target dialog while the pilot browses with Next/Prev.
+// Overrides the default nav index so the bearing line points aircraft → browsed fix.
+// -1 means no browse override is active.
+static int ga_browse_wp_index  = -1;
+// Corresponding Task[] array index for ga_browse_wp_index.
+// Stored separately so DrawBearing can query the loop start without acquiring a lock.
+static int ga_browse_task_idx  = -1;
+
+void GA_SetTargetBrowseWP(int wp_index, int task_idx) {
+  ga_browse_wp_index = wp_index;
+  ga_browse_task_idx = task_idx;
+}
+
+// Returns the task-array index from which DrawBearing should begin the leg chain
+// when GA is browsing.  For non-GA or no-browse cases, returns 'fallback' so that
+// the original DrawBearing behaviour is completely unchanged.
+int GA_GetTargetPanLoopStart(int fallback) {
+  if (ISGAAIRCRAFT && ga_browse_task_idx >= 0) {
+    return ga_browse_task_idx;
+  }
+  return fallback;
+}
+
 int GA_GetDirectToNavIndex() {
-  if (ISGAAIRCRAFT && DirectToActive && ValidWayPointFast(DirectToWaypointIndex)) {
+  if (!ISGAAIRCRAFT) return -1;
+
+  // Active off-task Direct To takes priority over dialog browsing.
+  if (DirectToActive && ValidWayPointFast(DirectToWaypointIndex)) {
     return DirectToWaypointIndex;
   }
+
+  // Target dialog browse: pilot is previewing a task WP via Next/Prev.
+  // Return that WP so the bearing line shows aircraft → browsed fix.
+  if (ValidWayPointFast(ga_browse_wp_index)) {
+    return ga_browse_wp_index;
+  }
+
   return -1;
 }
 

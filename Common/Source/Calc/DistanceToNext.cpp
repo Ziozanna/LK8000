@@ -18,15 +18,17 @@ void DistanceToNext(NMEA_INFO *Basic, DERIVED_INFO *Calculated)
   //  LockFlightData();
   LockTaskData();
 
+  if (GA_ComputeDirectToDistanceBearing(Basic, Calculated)) {
+    UnlockTaskData();
+    return;
+  }
+
   if(ValidTaskPoint(ActiveTaskPoint))
     {
       double w1lat, w1lon;
       double w0lat, w0lon;
 
-      if (GA_ComputeDirectToDistanceBearing(Basic, Calculated)) {
-        UnlockTaskData();
-        return;
-      } else if(DoOptimizeRoute()) {
+      if(DoOptimizeRoute()) {
         w0lat = Task[ActiveTaskPoint].AATTargetLat;
         w0lon = Task[ActiveTaskPoint].AATTargetLon;
       } else {

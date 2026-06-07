@@ -33,6 +33,19 @@ void GA_ApplyDirectToAutopilotOverride(int& prev_index, int& next_index);
 // Returns the Task array index of that WP, or ActiveTaskPoint as fallback.
 int GA_FindNextForwardTaskWP(double from_lat, double from_lon);
 
+// Register the waypoint the pilot is currently browsing in the Target dialog
+// (Next/Prev navigation).  While set, GA_GetDirectToNavIndex() returns wp_index
+// so the bearing line always points aircraft → browsed fix.
+// task_idx is the corresponding Task[] array index (used by GA_GetTargetPanLoopStart).
+// Call with both -1 to clear (e.g. when the Target dialog closes).
+void GA_SetTargetBrowseWP(int wp_index, int task_idx = -1);
+
+// Returns the task-array index from which the TARGET_PAN leg loop should start
+// when a GA browse override is active.  For all non-GA cases returns 'fallback'
+// unchanged, so DrawBearing behaviour is identical to the original for gliders.
+// Safe to call while LockTaskData() is held (no lock acquired internally).
+int GA_GetTargetPanLoopStart(int fallback);
+
 // --- Dialog functions (dlgDirectToCountdown.cpp) ---
 
 // Task-point Direct To (from Target dialog): counts down, then advances ActiveTaskPoint.
