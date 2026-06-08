@@ -114,28 +114,41 @@ void GA_SetTargetBrowseWP(int wp_index, int task_idx) {
   ga_browse_task_idx = task_idx;
 }
 
-// Returns the task-array index from which DrawBearing should begin the leg chain
-// when GA is browsing.  For non-GA or no-browse cases, returns 'fallback' so that
-// the original DrawBearing behaviour is completely unchanged.
 int GA_GetTargetPanLoopStart(int fallback) {
-  if (ISGAAIRCRAFT && ga_browse_task_idx >= 0) {
+  if (!ISGAAIRCRAFT) return fallback;
+
+  if (ga_browse_task_idx >= 0) {
+    // Off-task Direct To browsing: skip the chain entirely.
+    // The approach line (aircraft → browsed WP) is drawn by the first DrawGreatCircle;
+    // DrawTask already renders the dashed route, so drawing solid lines here would cover it.
+    if (DirectToActive && ValidWayPointFast(DirectToWaypointIndex)) {
+      return MAXTASKPOINTS - 1;  // loop starts at MAXTASKPOINTS, never runs
+    }
+    // Normal task browsing: draw chain from the browsed WP.
     return ga_browse_task_idx;
   }
+
+  // Off-task Direct To (not browsing): include the re-join leg (DirectToWP → Task[fallback]).
+  if (DirectToActive && ValidWayPointFast(DirectToWaypointIndex)) {
+    return fallback - 1;
+  }
+
   return fallback;
 }
 
 int GA_GetDirectToNavIndex() {
   if (!ISGAAIRCRAFT) return -1;
 
-  // Active off-task Direct To takes priority over dialog browsing.
-  if (DirectToActive && ValidWayPointFast(DirectToWaypointIndex)) {
-    return DirectToWaypointIndex;
-  }
-
-  // Target dialog browse: pilot is previewing a task WP via Next/Prev.
-  // Return that WP so the bearing line shows aircraft → browsed fix.
+  // Target dialog browse: the pilot is previewing a task WP via Next/Prev.
+  // The browsed WP takes priority so the bearing line shows aircraft → browsed
+  // fix (which is at the map centre) rather than the off-screen off-task target.
   if (ValidWayPointFast(ga_browse_wp_index)) {
     return ga_browse_wp_index;
+  }
+
+  // Off-task Direct To (not currently browsing a task WP).
+  if (DirectToActive && ValidWayPointFast(DirectToWaypointIndex)) {
+    return DirectToWaypointIndex;
   }
 
   return -1;
