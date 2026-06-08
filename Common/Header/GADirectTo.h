@@ -46,6 +46,48 @@ void GA_SetTargetBrowseWP(int wp_index, int task_idx = -1);
 // Safe to call while LockTaskData() is held (no lock acquired internally).
 int GA_GetTargetPanLoopStart(int fallback);
 
+// --- Target dialog functions (dlgTargetGA.cpp) ---
+
+class WndForm;
+class WndButton;
+
+// Called at dialog open: saves wf pointer and target_point address.
+void GA_InitTargetDialog(WndForm* wf, int* target_point_ptr);
+
+// Called at dialog close: clears saved state and resets GA browse flags.
+void GA_ResetTargetDialog();
+
+// True when the pilot is browsing forward task WPs during an off-task Direct To.
+bool GA_IsOfftaskBrowsing();
+
+// Returns true if GA allows opening the Target dialog without a valid task WP.
+// Sets TaskPoint to -1 when there is no task WP.
+bool GA_CanOpenWithoutTask(int& TaskPoint);
+
+// Notify that the user manually selected a different task WP (e.g. from dropdown).
+void GA_OnTargetPointSelected();
+
+// Show/hide Prev, Next, DirectTo nav buttons. No-op for non-GA.
+void GA_UpdateNavButtons();
+
+// Refresh GA fields: visibility + Dist/ETE/ETA values + off-task title.
+// Always safe to call; hides fields for non-GA aircraft.
+void GA_RefreshTargetFields();
+
+// Apply GA off-task pan. Returns true if handled (caller should return early).
+bool GA_ApplyTargetPanOverride(unsigned& dlgSize);
+
+// Returns landable waypoint index for Approach in GA off-task mode. Returns -1 if not overriding.
+int GA_GetApproachWPForTarget();
+
+// Handle Prev/Next button clicks. Returns true if action was taken
+// (caller should call RefreshTargetPoint + GA_UpdateNavButtons + ApplyTargetPanIfNeeded).
+bool GA_OnTargetPrev();
+bool GA_OnTargetNext();
+
+// Handle DirectTo button click (fully self-contained, closes parent form on activation).
+void GA_OnTargetDirectTo(WndButton* pWnd);
+
 // --- Dialog functions (dlgDirectToCountdown.cpp) ---
 
 // Task-point Direct To (from Target dialog): counts down, then advances ActiveTaskPoint.

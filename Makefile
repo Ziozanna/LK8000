@@ -1206,6 +1206,7 @@ DLGS	:=\
 	$(DLG)/dlgStartup.cpp \
 	$(DLG)/dlgStatus.cpp \
 	$(DLG)/dlgTarget.cpp \
+	$(DLG)/dlgTargetGA.cpp \
 	$(DLG)/dlgDirectToCountdown.cpp \
 	$(DLG)/dlgApproach.cpp \
 	$(DLG)/dlgTaskCalculator.cpp \
