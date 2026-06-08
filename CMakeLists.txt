@@ -717,6 +717,7 @@ add_library( LK8000 SHARED
     Common/Source/Dialogs/dlgStatus.cpp
     Common/Source/Dialogs/dlgDirectToCountdown.cpp
     Common/Source/Dialogs/dlgTarget.cpp
+    Common/Source/Dialogs/dlgTargetGA.cpp
     Common/Source/Dialogs/dlgApproach.cpp
     Common/Source/Dialogs/dlgTaskCalculator.cpp
     Common/Source/Dialogs/dlgTaskOverview.cpp
