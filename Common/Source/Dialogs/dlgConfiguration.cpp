@@ -624,11 +624,6 @@ static void DrawTrackingSkylinesAero(tracking::Profile& profile, LKSurface& Surf
 
 static void DrawTrackingFFVL(tracking::Profile& profile, LKSurface& Surface,
                              PixelRect& rcClient) {
-  if (!http_session::ssl_available()) {
-    DrawTrackingNone(profile, Surface, rcClient);
-    return;
-  }
-
   auto label = PlatformLabel(profile.protocol);
   Surface.SetTextColor(clBlack);
   Surface.DrawText(rcClient.GetTopLeft(), label);
@@ -638,17 +633,22 @@ static void DrawTrackingFFVL(tracking::Profile& profile, LKSurface& Surface,
 
 static void DrawTrackingOsmAnd(tracking::Profile& profile, LKSurface& Surface,
                              PixelRect& rcClient) {
-  if (!http_session::ssl_available()) {
-    DrawTrackingNone(profile, Surface, rcClient);
-    return;
-  }
 
+  auto label = to_tstring(profile.server);
+  Surface.SetTextColor(clBlack);
+  Surface.DrawText(rcClient.GetTopLeft(), label.c_str());
+  // TODO: add usefull info
+  //    profile.url
+  //    profile.user
+}
+
+static void DrawTrackingPureTrack(tracking::Profile& profile, LKSurface& Surface,
+                             PixelRect& rcClient) {
   auto label = PlatformLabel(profile.protocol);
   Surface.SetTextColor(clBlack);
   Surface.DrawText(rcClient.GetTopLeft(), label);
   // TODO: add usefull info
-  //    profile.url
-  //    profile.user
+  //   profile.always_on
 }
 
 static void DrawTracking(tracking::Profile& profile, LKSurface& Surface,
@@ -671,6 +671,9 @@ static void DrawTracking(tracking::Profile& profile, LKSurface& Surface,
     case tracking::platform::osmand:
     case tracking::platform::traccar:
       DrawTrackingOsmAnd(profile, Surface, rcText);
+      break;
+    case tracking::platform::puretrack:
+      DrawTrackingPureTrack(profile, Surface, rcText);
       break;
   }
 }
@@ -2342,7 +2345,7 @@ DataField* dfe = wp->GetDataField();
 #if 0
     // this wont update visibility or readonly after changing polar, so we dont use it
     // because this is also saved in the aircraft file and be better to be visible all the times
-    if (WEIGHTS[2]==0)
+    if (WEIGHTS[WEIGHT_WATER]==0)
 	wp->SetVisible(false);
     else
 	wp->SetVisible(true);

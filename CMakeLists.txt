@@ -1,10 +1,22 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.13)
 
 project(assembler C CXX ASM)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+include(CheckIPOSupported)
+check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
+
+if(ipo_supported)
+    message(STATUS "LTO is supported and enabled")
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG FALSE)
+else()
+    message(STATUS "LTO is not supported: ${ipo_error}")
+endif()
 
 add_definitions(
     -DBOOST_NO_IOSTREAM
@@ -179,7 +191,6 @@ add_library( LK8000 SHARED
     Common/Source/xcs/Util/TruncateString.cpp
     Common/Source/xcs/Util/StaticString.cpp
     Common/Source/xcs/Util/UTF8.cpp
-    Common/Source/xcs/Util/StaticString.cpp
     Common/Source/xcs/Util/StringUtil.cpp
 
     Common/Source/xcs/OS/Clock.cpp
@@ -187,7 +198,6 @@ add_library( LK8000 SHARED
     Common/Source/xcs/OS/FileDescriptor.cpp
     Common/Source/xcs/OS/Poll.cpp
     Common/Source/xcs/OS/FileUtil.cpp
-    Common/Source/xcs/OS/Poll.cpp
     Common/Source/xcs/OS/Process.cpp
     Common/Source/xcs/OS/PathName.cpp
 
@@ -665,7 +675,6 @@ add_library( LK8000 SHARED
     Common/Source/Devices/devVaulter.cpp
     Common/Source/Devices/devOpenVario.cpp
     Common/Source/Devices/devFlarm.cpp
-    Common/Source/Devices/devFlarm.cpp
     Common/Source/Devices/devLX_EOS_ERA.cpp
     Common/Source/Devices/devFanet.cpp
     Common/Source/Devices/devRCFenix.cpp
@@ -808,7 +817,9 @@ add_library( LK8000 SHARED
     Common/Source/Tracking/TrackingSettings.cpp
     Common/Source/Tracking/SkylinesGlue.cpp
     Common/Source/Tracking/FFVLTracking.cpp
-    Common/Source/Tracking/OsmAndTracking.cpp
+    Common/Source/Tracking/Traccar.cpp
+    Common/Source/Tracking/OsmAnd.cpp
+    Common/Source/Tracking/PureTrack.cpp
 
     Common/Source/NMEA/Derived.h
     Common/Source/NMEA/Info.h

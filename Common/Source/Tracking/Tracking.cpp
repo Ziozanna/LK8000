@@ -23,7 +23,9 @@
 #include "Settings/write.h"
 #include "TrackingSettings.h"
 #include "FFVLTracking.h"
-#include "OsmAndTracking.h"
+#include "OsmAnd.h"
+#include "Traccar.h"
+#include "PureTrack.h"
 #include "utils/stringext.h"
 #include "utils/strcpy.h"
 #include "MessageLog.h"
@@ -40,8 +42,32 @@ namespace tracking {
 std::vector<Profile> profiles;
 
 namespace {
+
+class tracker_list final {
+ public:
+
+  template <std::derived_from<ITrackingHandler> Handler, typename... Args>
+  void add(Args&&... args) {
+    handlers.emplace_back(
+        std::make_unique<Handler>(std::forward<Args>(args)...));
+  }
+
+  void update(const NMEA_INFO& Basic, const DERIVED_INFO& Calculated) const {
+    for (auto& handler : handlers) {
+      handler->Update(Basic, Calculated);
+    }
+  }
+
+  void clear() {
+    handlers.clear();
+  }
+
+ private:
+  std::vector<std::unique_ptr<ITrackingHandler>> handlers;
+};
+
 // private global;
-std::vector<std::unique_ptr<ITrackingHandler>> active_handlers;
+tracker_list active_handlers;
 
 namespace migration {
 // --- Variables for migrating old settings ---
@@ -66,7 +92,7 @@ void DoMigration() {
   // --- Starting migration ---
   StartupStore(_T(". Migrating old tracking settings to new format."));
 
-  // Clear existing profiles to start from a clean slate
+  // Clear existing profiles to start from a clean state
   profiles.clear();
 
   // --- Migration of LiveTrack24/Skylines to profile 0 ---
@@ -123,44 +149,47 @@ void Initialize() {
           std::transform(server_upper.begin(), server_upper.end(),
                          server_upper.begin(), ::toupper);
           if (server_upper.compare("WWW.LIVETRACK24.COM") == 0) {
-            active_handlers.emplace_back(
-                std::make_unique<LiveTrack24V2Handler>(profile));
+            active_handlers.add<LiveTrack24V2Handler>(profile);
           }
           else {
-            active_handlers.emplace_back(
-                std::make_unique<LiveTrack24V1Handler>(profile));
+            active_handlers.add<LiveTrack24V1Handler>(profile);
           }
         }
         break;
       case platform::skylines_aero:
         if (profile.interval > 0) {
-          auto skylines_glue = std::make_unique<SkylinesGlue>(profile);
-
+          active_handlers.add<SkylinesGlue>(profile);
           if (profile.radar) {
             LKTime_Real = 90;
             LKTime_Ghost = 180;
             LKTime_Zombie = 360;
           }
-          active_handlers.emplace_back(std::move(skylines_glue));
         }
         break;
       case platform::ffvl:
         if (http_session::ssl_available() && !profile.user.empty()) {
-          auto ffvl_handler = std::make_unique<FFVLTracking>(profile.user);
-          ffvl_handler->Start();
-          active_handlers.emplace_back(std::move(ffvl_handler));
+          active_handlers.add<FFVLTracking>(profile.user);
         }
         break;
       case platform::osmand:
+        if (profile.interval > 0) {
+          active_handlers.add<OsmAnd>(profile);
+        }
+        break;
       case platform::traccar:
+        if (profile.interval > 0) {
+          active_handlers.add<Traccar>(profile);
+        }
+        break;
+      case platform::puretrack:
         if (http_session::ssl_available() && profile.interval > 0) {
-          auto handler = std::make_unique<OsmAndTracking>(profile);
-          handler->Start();
-          active_handlers.emplace_back(std::move(handler));
+          auto id = GetUniqueDeviceId();  // ensure device ID is valid
+          if (!id.empty()) {
+            active_handlers.add<PureTrack>(id, profile);
+          }
         }
         break;
       case platform::none:
-      default:
         break;
     }
   }
@@ -172,10 +201,7 @@ void Update(const NMEA_INFO& Basic, const DERIVED_INFO& Calculated) {
     return;  // skip tracking in simulation mode or replay mode
   }
 #endif
-
-  for (auto& handler : active_handlers) {
-    handler->Update(Basic, Calculated);
-  }
+  active_handlers.update(Basic, Calculated);
 }
 
 void DeInitialize() {
@@ -264,6 +290,8 @@ const TCHAR* PlatformLabel(platform platform) {
       return _T("OsmAnd");
     case tracking::platform::traccar:
       return _T("Traccar");
+    case tracking::platform::puretrack:
+      return _T("PureTrack");
   }
   return _T("");
 }
@@ -280,6 +308,8 @@ LKBitmap load_bitmap(platform platform) {
       return LKLoadBitmap(_T("OSMAND"), false);
     case tracking::platform::traccar:
       return LKLoadBitmap(_T("TRACCAR"), false);
+    case tracking::platform::puretrack:
+      return LKLoadBitmap(_T("PURETRACK"), false);
     case tracking::platform::none:
       break;
   }

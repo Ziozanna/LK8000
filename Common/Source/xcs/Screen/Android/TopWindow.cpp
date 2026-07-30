@@ -53,14 +53,20 @@ TopWindow::ResumeSurface()
      associated SurfaceHolder has a valid Surface"), therefore we're
      trying again until we're successful. */
 
-  assert(paused);
+  assert([&] {
+    const std::lock_guard lock(paused_mutex);
+    return paused;
+  }());
 
-  if (!native_view->initSurface())
+  if (!native_view->initSurface()) {
     /* failed - retry later */
     return false;
+  }
 
-  paused = false;
-  resumed = false;
+  WithLock(paused_mutex, [&]() {
+    paused = false;
+    resumed = false;
+  });
 
   screen->Resume();
 
@@ -72,7 +78,19 @@ TopWindow::ResumeSurface()
 bool
 TopWindow::CheckResumeSurface()
 {
-  return (!resumed || ResumeSurface()) && !paused;
+  bool local_resumed;
+  bool local_paused;
+
+  WithLock(paused_mutex, [&]() {
+    local_resumed = resumed;
+    local_paused = paused;
+  });
+
+  if (local_resumed) {
+    return ResumeSurface();
+  }
+
+  return !local_paused;
 }
 
 void
@@ -105,8 +123,13 @@ TopWindow::OnResize(PixelSize new_size)
 void
 TopWindow::OnPause()
 {
-  if (paused)
+  const bool already_paused = WithLock(paused_mutex, [&]() {
+    return paused;
+  });
+
+  if (already_paused) {
     return;
+  }
 
   TextCache::Flush();
   OpenGL::DeinitShapes();
@@ -123,11 +146,19 @@ TopWindow::OnPause()
 void
 TopWindow::OnResume()
 {
-  if (!paused)
-    return;
+  const bool should_resume = WithLock(paused_mutex, [&]() {
+    if (!paused) {
+      return false;
+    }
 
-  /* tell TopWindow::Expose() to reinitialize OpenGL */
-  resumed = true;
+    /* tell TopWindow::Expose() to reinitialize OpenGL */
+    resumed = true;
+    return true;
+  });
+
+  if (!should_resume) {
+    return;
+  }
 
   /* schedule a redraw */
   Invalidate();
@@ -146,14 +177,16 @@ TopWindow::Pause()
   event_queue->Push(Event::PAUSE);
 
   std::unique_lock lock(paused_mutex);
-  while (running && !paused)
-    paused_cond.wait(lock);
+  paused_cond.wait(lock, [&]() {
+     return !running || paused; 
+  });
 }
 
 void
 TopWindow::Resume()
 {
-  event_queue->Purge(match_pause_and_resume, nullptr);
+  /* Keep a pending PAUSE event: purging it can make Pause() wait forever. */
+  event_queue->Purge(Event::RESUME);
   event_queue->Push(Event::RESUME);
 }
 
@@ -206,9 +239,18 @@ TopWindow::OnEvent(const Event &event)
   case Event::POINTER_UP:
     return OnMultiTouchUp();
 
-  case Event::RESIZE:
-    if (screen->CheckResize(PixelSize(event.point.x, event.point.y)))
-      Resize(screen->GetSize());
+  case Event::RESIZE: {
+    if (!screen->IsReady()) {
+      /* postpone the resize if we're paused; the real resize will be
+         handled by TopWindow::refresh() as soon as XCSoar is
+         resumed */
+      return true;
+    }
+
+    PixelSize event_size(event.point.x, event.point.y);
+    screen->CheckResize(event_size);
+    PixelSize screen_size = screen->GetSize();
+    Resize(screen_size);
 
     /* it seems the first page flip after a display orientation change
        is ignored on Android (tested on a Dell Streak / Android
@@ -216,8 +258,11 @@ TopWindow::OnEvent(const Event &event)
        something */
     screen->Flip();
 
-    Resize(event.point.x, event.point.y);
+    /* after a surface recreation (e.g. orientation change), the
+       buffer is empty; schedule a full redraw */
+    Invalidate();
     return true;
+  }
 
   case Event::PAUSE:
     OnPause();
@@ -235,8 +280,10 @@ TopWindow::OnEvent(const Event &event)
 void
 TopWindow::OnStartEventLoop()
 {
-  const std::lock_guard lock(paused_mutex);
-  ++running;
+  WithLock(paused_mutex, [&]() {
+    ++running;
+  });
+  paused_cond.notify_one();
 }
 
 void
@@ -244,7 +291,9 @@ TopWindow::OnStopEventLoop()
 {
   WithLock(paused_mutex, [&]() {
     assert(running);
-    --running;
+    if (running) {
+      --running;
+    }
   });
   /* wake up the Android Activity thread, just in case it's waiting
      inside Pause() */

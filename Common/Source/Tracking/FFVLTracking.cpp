@@ -3,7 +3,7 @@
  * Released under GNU/GPL License v.2 or later
  * See CREDITS.TXT file for authors and copyrights
  *
- * File:   FFVLTracking.h
+ * File:   FFVLTracking.cpp
  * Author: Bruno de Lacheisserie
  *
  * Created on February 18, 2024
@@ -17,6 +17,7 @@
 
 FFVLTracking::FFVLTracking(std::string user_key)
             : BaseTracking("ffvl_tracker"), _user_key(std::move(user_key)) {
+  Start();
 }
 
 FFVLTracking::~FFVLTracking() {
@@ -40,13 +41,12 @@ void FFVLTracking::Update(const NMEA_INFO &basic, const DERIVED_INFO &calculated
 }
 
 void FFVLTracking::Send(http_session& http, const AGeoPoint& position) {
-
-  std::string url = R"(https://data.ffvl.fr/api/?device_type=LK8000)";
-  url += R"(&key=a0ac0e7592a0c827cbc8a7b95737d044)";
-  url += R"(&ffvl_tracker_key=)" + _user_key;
-  url += R"(&latitude=)" + std::to_string(position.latitude);
-  url += R"(&longitude=)" + std::to_string(position.longitude);
-  url += R"(&altitude=)" + std::to_string(position.altitude);
-
-  http.request(url);
+  http.get("https://data.ffvl.fr/api/", {
+    {"device_type", "LK8000"},
+    {"key", "a0ac0e7592a0c827cbc8a7b95737d044"},
+    {"ffvl_tracker_key", _user_key},
+    {"latitude", position.latitude},
+    {"longitude", position.longitude},
+    {"altitude", position.altitude}
+  });
 }

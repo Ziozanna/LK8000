@@ -10,6 +10,38 @@ Menu - Info 2/2 - INFO button
 There are several pages that you can scroll using Next and Prev buttons.
 Please ADVANCE TO THE NEXT PAGE to start reading about changes and enhancements.
 
+[version 7.6.6]
+ - Fix Config Pilot Landscape screen layout 
+
+[version 7.6.5]
+* Fix:
+ - Invalid task time to start message [#1715]
+ - CompGPS waypoint file loading [#1713]
+ - Cupx waypoint file loading [#1713]
+ - Fixed time gates notification [#1719]
+ - Conversion from load factor to ballast percentage (#1714) 
+* New:
+ - Allow SoftRF Concorde, Prime Mk4 and Retro Mk2
+
+[version 7.6.4]
+ - Fix CUP waypoint & Task loading
+
+[version 7.6.3]
+* New:
+ - Live-Tracking : add "puretrack.io"
+* Fix:
+ - Incorrect remaining distance in the status window. (#1699)
+ - Cup Waypoint file: 
+    accept "utf8 with Bom" file encoding 
+    ignore '*' comment lines (#1695)
+
+[version 7.6.2]
+* Fix:
+ - AAT task distance regression (#1706)
+ - TimeGates loading from lkt file (#1703)
+ - Android: fix pause/resume race that could block Pause forever
+ - GDL-90 : add missing  QNE to QNH conversion for pressure altitude
+
 [version 7.6.1]
  - Fix possible Segfault with "cup" waypoint file
 

@@ -32,10 +32,9 @@
 
 #define deb_                  (0)  // debug output switch
 
- Mutex DLmutex;
+namespace {
 
-int ReadEOS_IGCFile(DeviceDescriptor_t* d, uint8_t IGC_FileIndex) ;
-static void UpdateList(void);
+ Mutex DLmutex;
 
 TCHAR DownoadIGCFilename[MAX_NMEA_PAR_LEN];
 TCHAR szEOS_DL_StatusText[STATUS_TXT_LEN];
@@ -64,7 +63,10 @@ typedef struct {
   uint32_t filesize;
 } EOSListElementType;
 
+} // namespace
 
+static int ReadEOS_IGCFile(DeviceDescriptor_t* d, uint8_t IGC_FileIndex) ;
+static void UpdateList(void);
 
 
 static bool OnTimer(WndForm *pWnd) ;
@@ -651,7 +653,7 @@ void StopEOS_IGCReadThread() {
 
 
 
-int ReadEOS_IGCFile(DeviceDescriptor_t* d, uint8_t IGC_FileIndex) {
+static int ReadEOS_IGCFile(DeviceDescriptor_t* d, uint8_t IGC_FileIndex) {
   const std::lock_guard lock(DLmutex);
 static uint16_t BlockNo=1; 
 static uint8_t ErrCnt = 0;

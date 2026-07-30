@@ -140,21 +140,24 @@ BOOL XCV(DeviceDescriptor_t* d, const char* const* params, size_t nparams, NMEA_
   }
 
   if (params[1] == "bal-water"sv) {
-    double liters;
-    if (ReadChecked(params[2], liters)) {
-      d->RecvBallast(liters / WEIGHTS[2]);
+    const double full_ballast = WEIGHTS[WEIGHT_WATER];
+    if (full_ballast > 0) {
+      double liters;
+      if (ReadChecked(params[2], liters)) {
+        d->RecvBallast(liters / full_ballast);
+      }
     }
   } 
   else if (params[1] == "crew-weight"sv) {
     double weight;
     if (ReadChecked(params[2], weight)) {
-      // TODO : set WEIGHTS[0] ?
+      // TODO : set WEIGHTS[WEIGHT_PILOT] ?
     }
   }
   else if (params[1] == "empty-weight"sv) {
     double weight;
     if (ReadChecked(params[2], weight)) {
-      // TODO : set WEIGHTS[1] ?
+      // TODO : set WEIGHTS[WEIGHT_PLANEDRY] ?
     }
   }
   return TRUE;
@@ -235,15 +238,15 @@ bool PutEmptyWeight(DeviceDescriptor_t* d, double weight) {
 }
 
 BOOL PutBallast(DeviceDescriptor_t* d, double Ballast) {
-  double weight = WEIGHTS[2] * Ballast;
+  double weight = WEIGHTS[WEIGHT_WATER] * Ballast;
   return PutXcs(d, "bal-water", weight);
 }
 
 BOOL Open(DeviceDescriptor_t* d) {
   PutVersion(d);
 
-  PutCrewWeight(d, WEIGHTS[0]);
-  PutEmptyWeight(d, WEIGHTS[1]);
+  PutCrewWeight(d, WEIGHTS[WEIGHT_PILOT]);
+  PutEmptyWeight(d, WEIGHTS[WEIGHT_PLANEDRY]);
   PutBallast(d, BALLAST);
 
   PutMacCready(d, MACCREADY);

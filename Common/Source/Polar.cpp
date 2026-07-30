@@ -20,22 +20,34 @@
 // Check that WingArea is NOT zero! Winpilot polars had no WingArea configurable!
 
 void WeightOffset(double wload) {
-  double calcweight;
+  // we should lock calculation thread probably
 
-  if (GlidePolar::WingArea<1) { // 100131
-	// we should lock calculation thread probably
-	if (GlidePolar::WeightOffset!=0) GlidePolar::WeightOffset=0;
-	return;
+  if (GlidePolar::WingArea < 1) {  // 100131
+    GlidePolar::WeightOffset = 0;
+    return;
   }
 
-  // WEIGHTS[2] is full ballast
+  // WEIGHTS[WEIGHT_WATER] is full ballast
   // BALLAST is percentage of full ballast
   // new weight = (wingload * wingarea) - ballast
-  calcweight=(wload*GlidePolar::WingArea) - (WEIGHTS[2]*BALLAST);
+  double calcweight =
+      (wload * GlidePolar::WingArea) - (WEIGHTS[WEIGHT_WATER] * BALLAST);
+
   // We set a min limit here, see SetBallast()
-  // Probably only UAV can have such low wing loadings
-  // Or a gnome on an RC glider, maybe.
-  GlidePolar::WeightOffset = std::max(calcweight-WEIGHTS[0]-WEIGHTS[1],(GlidePolar::WingArea - WEIGHTS[0] - WEIGHTS[1]));
+
+  // use 1.0 kg/m2 for minimum wingloading, since wingloading range each type of
+  // gliders are different, and we want to avoid negative weight offset.
+  //
+  //   Paraglider     3–8 kg/m²
+  //   Hang glider    5–12 kg/m²
+  //   Sailplane      30–65+ kg/m²
+
+  constexpr double min_wload = 1.0;
+
+  const double dry_gross_weight = WEIGHTS[WEIGHT_PILOT] + WEIGHTS[WEIGHT_PLANEDRY];
+  const double min_offset = ((min_wload * GlidePolar::WingArea) - dry_gross_weight); 
+
+  GlidePolar::WeightOffset = std::max(calcweight - dry_gross_weight, min_offset);
 
   GlidePolar::SetBallast(); // BUGFIX 101002
 }
@@ -49,8 +61,9 @@ bool PolarWinPilot2XCSoar(double (&dPOLARV)[3], double (&dPOLARW)[3], double (&w
   POLARLD[0] = dPOLARW[0];
   POLARLD[1] = dPOLARW[1];
   POLARLD[2] = dPOLARW[2];
-  WW[0]  = ww[0];
-  WW[1]  = ww[1];
+
+  WW[0] = ww[0]; // Glider Dry Gross weight ( Max takeoff weight minus ballast weight )
+  WW[1] = ww[1]; // Ballast Liters ( water ballast weight in kg, 1 liter = 1 kg )
 
   const double v1 = dPOLARV[0]/3.6; 
   const double v2 = dPOLARV[1]/3.6; 
@@ -97,16 +110,16 @@ bool PolarWinPilot2XCSoar(double (&dPOLARV)[3], double (&dPOLARW)[3], double (&w
   // however it doesnt hurt .
   // For this reason, the 70kg pilot weight is not important.
   // If we want to adjust wingloading, we just need to change gross weight.
-  WEIGHTS[0] = 70;                      // Pilot weight
-  WEIGHTS[1] = ww[0]-WEIGHTS[0];        // Glider empty weight
-  WEIGHTS[2] = ww[1];                   // Ballast weight
+  WEIGHTS[WEIGHT_PILOT] = 70;                      // Pilot weight
+  WEIGHTS[WEIGHT_PLANEDRY] = ww[0]-WEIGHTS[WEIGHT_PILOT];        // Glider empty weight
+  WEIGHTS[WEIGHT_WATER] = ww[1];                   // Ballast weight
 
 
   // now scale off weight
-  BUGSTOP_LKASSERT((WEIGHTS[0] + WEIGHTS[1])>=0);
-  if((WEIGHTS[0] + WEIGHTS[1])>=0) {
-    POLAR[0] = POLAR[0] * (double)sqrt(WEIGHTS[0] + WEIGHTS[1]);
-    POLAR[2] = POLAR[2] / (double)sqrt(WEIGHTS[0] + WEIGHTS[1]);
+  BUGSTOP_LKASSERT((WEIGHTS[WEIGHT_PILOT] + WEIGHTS[WEIGHT_PLANEDRY])>=0);
+  if((WEIGHTS[WEIGHT_PILOT] + WEIGHTS[WEIGHT_PLANEDRY])>=0) {
+    POLAR[0] = POLAR[0] * (double)sqrt(WEIGHTS[WEIGHT_PILOT] + WEIGHTS[WEIGHT_PLANEDRY]);
+    POLAR[2] = POLAR[2] / (double)sqrt(WEIGHTS[WEIGHT_PILOT] + WEIGHTS[WEIGHT_PLANEDRY]);
   }
   
   return true;
